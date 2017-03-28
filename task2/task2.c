@@ -28,7 +28,7 @@ int main(int argc, char** argv) {
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-    double T = 0.02, h = 2e-2, k = 1, dt = 1e-4, u0 = 0, u1 = 1;
+    double T = 0.01, h = 2e-3, k = 1, dt = 1e-6, u0 = 0, u1 = 1;
 
     if (dt >= h*h/k) {
     	printf("Courant cond. fail:dt = %f, h*h/k = %f\n.", dt, h*h/k);
@@ -106,15 +106,15 @@ int main(int argc, char** argv) {
             }
         }
 
-        printf("%.3f ", u0);
+        printf("%.5f ", u0);
         for (int j = 1; j <= (size-1)/2; j++) {
-        	printf("%.3f ", points[j*points_per_proc]);
+        	printf("%.5f ", points[j*points_per_proc]);
         }
-        for (int j = (size-1)/2+1; j < size-1; j++) {
-            printf("%.3f ", points[1+(j-1)*points_per_proc]);
+        for (int j = (size-1)/2+2; j < size; j++) {
+            printf("%.5f ", points[1+(j-1)*points_per_proc]);
         }
 
-        printf("%.3f \n", u0);
+        printf("%.5f \n", u0);
 
         free(points);
         free(buf);
@@ -132,22 +132,27 @@ int main(int argc, char** argv) {
         }
         end = MPI_Wtime();
 
-        printf("%.3f ", u0);
+        printf("%.5f ", u0);
         for (int j = 1; j < size; j++) {
             MPI_Recv(msg, 2, MPI_DOUBLE, j, 1, MPI_COMM_WORLD, &status);
-            printf("%.3f:%.3f ", msg[0], msg[1]); 
+            if (j <= (size-1)/2) {
+                printf("%.5f ", msg[1]);    
+            }
+            if (j >  (size-1)/2+1) {
+                printf("%.5f ", msg[0]);    
+            }    
         }
-        printf("%.3f \n", u0);
+
+        printf("%.5f \n", u0);
         
         printf("\n Multi-process time is: %f \n \n", end-begin);
 
         printf("Exact solution is: \n");
-        printf("%.3f ", u0);
+        printf("%.5f ", u0);
         for (double x = 0.1; x < 0.9; x+=0.1) {
-        	printf("%.3f ", exact_solution(x, T, k, u1, 1));
+        	printf("%.5f ", exact_solution(x, T, k, u1, 1));
         }
-        printf("%.3f \n", u0);
-
+        printf("%.5f \n", u0);
     }
 
     MPI_Finalize();   
