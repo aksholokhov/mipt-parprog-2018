@@ -2,13 +2,21 @@
 #include <stdlib.h>
 #include <mpi.h>
 #include <stdio.h>
+#include <math.h>
 
 double recalculate(double* points, double k, double dt, double h) {
     return points[1] + (k*dt/(h*h))*(points[2] - 2*points[1] + points[0]);
 }
 
-double exact_solution(double x, double t, double k) {
-	
+double exact_solution(double x, double t, double k, double u0, double l) {
+	double sum = 0;
+
+	double PI = 3.141592653589793;
+	for (int m = 0; m < 100500; m++) {
+		sum += exp(-k*PI*PI*(2*m+1)*(2*m+1)*t/(l*l))*sin(PI*(2*m+1)*x/l)/(2*m+1);
+	}
+
+	return 4*u0/PI*sum;
 }
 
 int main(int argc, char** argv) {
@@ -20,7 +28,7 @@ int main(int argc, char** argv) {
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-    double T = 2e-12, h = 1e-6, k = 1, dt = 2e-13, u0 = 0, u1 = 1;
+    double T = 2e-3, h = 2e-2, k = 1, dt = 1e-4, u0 = 0, u1 = 1;
 
     if (dt >= h*h/k) {
     	printf("Courant cond. fail:dt = %f, h*h/k = %f\n.", dt, h*h/k);
@@ -128,6 +136,14 @@ int main(int argc, char** argv) {
         printf("%.3f \n", u0);
         
         printf("\n Multi-process time is: %f \n \n", end-begin);
+
+        printf("Exact solution is: \n");
+        printf("%.3f ", u0);
+        for (double x = 0.1; x < 0.9; x+=0.1) {
+        	printf("%.3f ", exact_solution(x, T, k, u1, 1));
+        }
+        printf("%.3f \n", u0);
+
     }
 
     MPI_Finalize();   
