@@ -28,7 +28,7 @@ int main(int argc, char** argv) {
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-    double T = 2e-3, h = 2e-2, k = 1, dt = 1e-4, u0 = 0, u1 = 1;
+    double T = 0.02, h = 2e-2, k = 1, dt = 1e-4, u0 = 0, u1 = 1;
 
     if (dt >= h*h/k) {
     	printf("Courant cond. fail:dt = %f, h*h/k = %f\n.", dt, h*h/k);
@@ -75,7 +75,7 @@ int main(int argc, char** argv) {
         }
         msg[0] = buf[1];
         msg[1] = buf[points_per_proc];       
-        if (rank != size-1) MPI_Send(msg, 2, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD);
+        MPI_Send(msg, 2, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD);
         free(points);
         free(buf);
     }
@@ -96,7 +96,7 @@ int main(int argc, char** argv) {
             buf[i] = u1;
         }
         
-        for (int i = 1; i < steps; i++) {
+        for (int i = 0; i < steps; i++) {
         	for (int j = 1; j < points_num+1; j++) {
                 buf[j] = recalculate(&points[j-1], k, dt, h);
             }
@@ -107,9 +107,13 @@ int main(int argc, char** argv) {
         }
 
         printf("%.3f ", u0);
-        for (int j = 1; j < size-1; j++) {
+        for (int j = 1; j <= (size-1)/2; j++) {
         	printf("%.3f ", points[j*points_per_proc]);
         }
+        for (int j = (size-1)/2+1; j < size-1; j++) {
+            printf("%.3f ", points[1+(j-1)*points_per_proc]);
+        }
+
         printf("%.3f \n", u0);
 
         free(points);
@@ -129,9 +133,9 @@ int main(int argc, char** argv) {
         end = MPI_Wtime();
 
         printf("%.3f ", u0);
-        for (int j = 1; j < size-1; j++) {
+        for (int j = 1; j < size; j++) {
             MPI_Recv(msg, 2, MPI_DOUBLE, j, 1, MPI_COMM_WORLD, &status);
-            printf("%.3f ", msg[1]); 
+            printf("%.3f:%.3f ", msg[0], msg[1]); 
         }
         printf("%.3f \n", u0);
         
