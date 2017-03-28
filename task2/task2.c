@@ -7,6 +7,10 @@ double recalculate(double* points, double k, double dt, double h) {
     return points[1] + (k*dt/(h*h))*(points[2] - 2*points[1] + points[0]);
 }
 
+double exact_solution(double x, double t, double k) {
+	
+}
+
 int main(int argc, char** argv) {
     MPI_Init(&argc, &argv);
 
@@ -16,28 +20,36 @@ int main(int argc, char** argv) {
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-    float T = 0.1, h = 0.02, k = 1, dt = 0.0002, step_log = 0.1, u0 = 0, u1 = 1;
+    double T = 2e-12, h = 1e-6, k = 1, dt = 2e-13, u0 = 0, u1 = 1;
+
+    if (dt >= h*h/k) {
+    	printf("Courant cond. fail:dt = %f, h*h/k = %f\n.", dt, h*h/k);
+    	MPI_Finalize();   
+    	return 0;
+    }
+
 
     int points_num = (int)(1/h);
     int points_per_proc = points_num/(size-1);
     int steps = (int)(T/dt);
 
     MPI_Status status;
+    MPI_Request request;
+
+    double msg[2];
 
     if (rank != 0) {
         double* points = (double*)malloc((points_per_proc+2)*sizeof(double));
         double* buf = (double*)malloc((points_per_proc+2)*sizeof(double));
         
-        for (int i = 0; i < points_per_proc+1; i++) {
+        for (int i = 0; i < points_per_proc+2; i++) {
             points[i] = u1;
             buf[i] = u1;
         }
 
+        
         for (int i = 0; i < steps; i++) {
-            buf[2] = buf[points_per_proc];
-            MPI_Send(&buf[1], 2, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD);
-            
-            MPI_Send(&points[1], 1, MPI_DOUBLE, rank-1, 0, MPI_COMM_WORLD);
+        	MPI_Send(&points[1], 1, MPI_DOUBLE, rank-1, 0, MPI_COMM_WORLD);
             MPI_Recv(&points[0], 1, MPI_DOUBLE, rank-1, 0, MPI_COMM_WORLD, &status);
 
             for (int j = 1; j < points_per_proc; j++) {
@@ -53,27 +65,71 @@ int main(int argc, char** argv) {
                 points[j] = buf[j];
             }
         }
+        msg[0] = buf[1];
+        msg[1] = buf[points_per_proc];       
+        if (rank != size-1) MPI_Send(msg, 2, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD);
         free(points);
         free(buf);
     }
 
     if (rank == 0) {
-        double buf[2];
-        for (int i = 0; i < steps; i++) {
-            MPI_Recv(buf, 1, MPI_DOUBLE, 1, 0, MPI_COMM_WORLD, &status);
-            MPI_Send(&u0, 1, MPI_DOUBLE, 1, 0, MPI_COMM_WORLD);
-            MPI_Send(&u0, 1, MPI_DOUBLE, size-1, 0, MPI_COMM_WORLD);
-            printf("%.3f ", u0);
-            for (int j = 1; j < size; j++) {
-                MPI_Recv(buf, 2, MPI_DOUBLE, j, 1, MPI_COMM_WORLD, &status);
-                printf("%.3f:%.3f ", buf[0], buf[1]); 
-            }
-            printf("%.3f \n", u0);
-            
-            MPI_Recv(buf, 1, MPI_DOUBLE, size-1, 0, MPI_COMM_WORLD, &status);
+
+    	//Single-process solution:
+    	double begin = MPI_Wtime();
+        
+    	double* points = (double*)malloc((points_num+2)*sizeof(double));
+        double* buf = (double*)malloc((points_num+2)*sizeof(double));
+        
+        points[0] = u0;
+        points[points_num+1] = u0;
+
+        for (int i = 1; i < points_num+1; i++) {
+            points[i] = u1;
+            buf[i] = u1;
         }
+        
+        for (int i = 1; i < steps; i++) {
+        	for (int j = 1; j < points_num+1; j++) {
+                buf[j] = recalculate(&points[j-1], k, dt, h);
+            }
+            
+            for (int j = 1; j < points_num+1; j++) {
+                points[j] = buf[j];
+            }
+        }
+
+        printf("%.3f ", u0);
+        for (int j = 1; j < size-1; j++) {
+        	printf("%.3f ", points[j*points_per_proc]);
+        }
+        printf("%.3f \n", u0);
+
+        free(points);
+        free(buf);
+        double end = MPI_Wtime();
+        printf("\n Single-process time is: %f \n \n", end-begin);
+    	
+        // Multi-process solution
+        begin = MPI_Wtime();
+    	int iter_countrer = 1;
+        for (int i = 0; i < steps; i++) {
+            MPI_Recv(msg, 1, MPI_DOUBLE, 1, 0, MPI_COMM_WORLD, &status);
+            MPI_Send(&u0, 1, MPI_DOUBLE, 1, 0, MPI_COMM_WORLD);
+            MPI_Send(&u0, 1, MPI_DOUBLE, size-1, 0, MPI_COMM_WORLD);            
+            MPI_Recv(msg, 1, MPI_DOUBLE, size-1, 0, MPI_COMM_WORLD, &status);
+        }
+        end = MPI_Wtime();
+
+        printf("%.3f ", u0);
+        for (int j = 1; j < size-1; j++) {
+            MPI_Recv(msg, 2, MPI_DOUBLE, j, 1, MPI_COMM_WORLD, &status);
+            printf("%.3f ", msg[1]); 
+        }
+        printf("%.3f \n", u0);
+        
+        printf("\n Multi-process time is: %f \n \n", end-begin);
     }
 
     MPI_Finalize();   
-    return 0;
+    	return 0;
 }
