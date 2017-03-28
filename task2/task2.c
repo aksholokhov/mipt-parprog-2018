@@ -28,7 +28,7 @@ int main(int argc, char** argv) {
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-    double T = 0.01, h = 2e-3, k = 1, dt = 1e-6, u0 = 0, u1 = 1;
+    double T = 1e-2, h = 2e-4, k = 1, dt = 1e-8, u0 = 0, u1 = 1;
 
     if (dt >= h*h/k) {
     	printf("Courant cond. fail:dt = %f, h*h/k = %f\n.", dt, h*h/k);
@@ -38,7 +38,7 @@ int main(int argc, char** argv) {
 
 
     int points_num = (int)(1/h);
-    int points_per_proc = points_num/(size-1);
+    int points_per_proc = (int)ceil(points_num/(size-1));
     int steps = (int)(T/dt);
 
     MPI_Status status;
@@ -47,6 +47,10 @@ int main(int argc, char** argv) {
     double msg[2];
 
     if (rank != 0) {
+       /* if (rank == size - 1) {
+            points_per_proc = points_num - points_per_proc*(size-1);
+        } */
+
         double* points = (double*)malloc((points_per_proc+2)*sizeof(double));
         double* buf = (double*)malloc((points_per_proc+2)*sizeof(double));
         
@@ -73,9 +77,8 @@ int main(int argc, char** argv) {
                 points[j] = buf[j];
             }
         }
-        msg[0] = buf[1];
-        msg[1] = buf[points_per_proc];       
-        MPI_Send(msg, 2, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD);
+
+        MPI_Send(&points[1], points_per_proc, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD);
         free(points);
         free(buf);
     }
@@ -113,11 +116,8 @@ int main(int argc, char** argv) {
         for (int j = (size-1)/2+2; j < size; j++) {
             printf("%.5f ", points[1+(j-1)*points_per_proc]);
         }
-
         printf("%.5f \n", u0);
 
-        free(points);
-        free(buf);
         double end = MPI_Wtime();
         printf("\n Single-process time is: %f \n \n", end-begin);
     	
@@ -132,19 +132,19 @@ int main(int argc, char** argv) {
         }
         end = MPI_Wtime();
 
-        printf("%.5f ", u0);
         for (int j = 1; j < size; j++) {
-            MPI_Recv(msg, 2, MPI_DOUBLE, j, 1, MPI_COMM_WORLD, &status);
-            if (j <= (size-1)/2) {
-                printf("%.5f ", msg[1]);    
-            }
-            if (j >  (size-1)/2+1) {
-                printf("%.5f ", msg[0]);    
-            }    
+            MPI_Recv(points + 1 + (j-1)*points_per_proc, points_per_proc, MPI_DOUBLE, j, 1, MPI_COMM_WORLD, &status);    
         }
-
-        printf("%.5f \n", u0);
         
+        printf("%.5f ", u0);
+        for (int j = 1; j <= (size-1)/2; j++) {
+            printf("%.5f ", points[j*points_per_proc]);
+        }
+        for (int j = (size-1)/2+2; j < size; j++) {
+            printf("%.5f ", points[1+(j-1)*points_per_proc]);
+        }
+        printf("%.5f \n", u0);
+       
         printf("\n Multi-process time is: %f \n \n", end-begin);
 
         printf("Exact solution is: \n");
@@ -153,6 +153,9 @@ int main(int argc, char** argv) {
         	printf("%.5f ", exact_solution(x, T, k, u1, 1));
         }
         printf("%.5f \n", u0);
+        free(points);
+        free(buf);
+        
     }
 
     MPI_Finalize();   
