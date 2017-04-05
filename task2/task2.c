@@ -12,7 +12,8 @@ double exact_solution(double x, double t, double k, double u0, double l) {
 	double sum = 0;
 
 	double PI = 3.141592653589793;
-	for (int m = 0; m < 100500; m++) {
+	for (int y = 0; y < 100500; y++) {
+		double m = (double)y;
 		sum += exp(-k*PI*PI*(2*m+1)*(2*m+1)*t/(l*l))*sin(PI*(2*m+1)*x/l)/(2*m+1);
 	}
 
@@ -28,7 +29,7 @@ int main(int argc, char** argv) {
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-    double T = 0.1, h = 2e-2, k = 1, dt = 2e-4, u0 = 0, u1 = 1;
+    double T = 0.0000001, h = 2e-5, k = 1, dt = 2e-10, u0 = 0, u1 = 1;
 
     if (dt >= h*h/k) {
     	printf("Courant cond. fail:dt = %f, h*h/k = %f\n.", dt, h*h/k);
@@ -37,11 +38,10 @@ int main(int argc, char** argv) {
     }
 
 
-    int points_num = (int)(1/h);
+    int points_num = (int)(1/h) + 1;
     div_t p = div(points_num,size-1);
     int points_per_proc = p.quot;
     int steps = (int)(T/dt);
-
 
     MPI_Status status;
     MPI_Request request;
@@ -56,7 +56,7 @@ int main(int argc, char** argv) {
         double* points = (double*)malloc((points_per_proc+2)*sizeof(double));
         double* buf = (double*)malloc((points_per_proc+2)*sizeof(double));
         
-        for (int i = 0; i < points_per_proc+2; i++) {
+        for (int i = 1; i < points_per_proc+1; i++) {
             points[i] = u1;
             buf[i] = u1;
         }
@@ -105,21 +105,34 @@ int main(int argc, char** argv) {
         	for (int j = 1; j < points_num+1; j++) {
                 buf[j] = recalculate(&points[j-1], k, dt, h);
             }
-            
             for (int j = 1; j < points_num+1; j++) {
                 points[j] = buf[j];
             }
-        }
-        
-        printf("%.5f ", u0);
-        for (double x = 0.1; x <= 0.9; x+=0.1) {
-            int pt = x > 0.5 ? floor(points_num*x) : ceil(points_num*x);
-            printf("%.5f ", points[1+pt]);
-        }
-        printf("%.5f \n", u0);
 
+           /* if (i == steps -1) {
+	            for (double j = 0; j<=1; j+=0.1) {
+	            	int point = (int)((points_num+1)*j);
+	            	if (j > 0.5) point++;
+	            	printf("%.3f ", exact_solution(j, (i+1)*dt, k, u1, 1));
+	            }
+	           	printf("\n");
+	           	for (double j = 0; j<=1; j+=0.1) {
+	            	int point = (int)((points_num+1)*j);
+	            	if (j > 0.5) point++;
+	            	printf("%.3f ", points[point]);
+	            }
+	            printf("\n");
+	        }*/
+
+        }
         double end = MPI_Wtime();
-        printf("\n Single-process time is: %f \n \n", end-begin);
+        printf("Single-process time is: %f, with result below \n ", end-begin);
+	    for (double j = 0; j<=1; j+=0.1) {
+	        int point = (int)((points_num+1)*j);
+	        if (j > 0.5) point++;
+	            printf("%.3f ", points[point]);
+	    }
+	    printf("\n \n");
     	
         // Multi-process solution
         begin = MPI_Wtime();
@@ -137,25 +150,32 @@ int main(int argc, char** argv) {
         }
         MPI_Recv(points + 1 + (size-1)*points_per_proc, points_per_proc + p.rem, MPI_DOUBLE, size-1, 1, MPI_COMM_WORLD, &status);
         
-        
-        printf("%.5f ", u0);
-        for (double x = 0.1; x <= 0.9; x+=0.1) {
-            int pt = x > 0.5 ? floor(points_num*x) : ceil(points_num*x);
-            //int pt = (int)(x*(double)points_num);
-            printf("%.5f ", points[1+pt]);
-        }
-        printf("%.5f \n", u0);
+        points[points_num+1] = u0;
+        printf("Multi-process time is: %f, with result below \n", end-begin);
+        for (double j = 0; j<=1; j+=0.1) {
+	        int point = (int)((points_num+1)*j);
+	        if (j > 0.5) point++;
+	            printf("%.3f ", points[point]);
+	    }
+	    printf("\n \n");
 
 
-        printf("\n Multi-process time is: %f \n \n", end-begin);
-
+	
         printf("Exact solution is: \n");
-        printf("%.5f ", u0);
+        for (double j = 0; j<=1; j+=0.1) {
+	        int point = (int)((points_num+1)*j);
+	        if (j > 0.5) point++;
+	            printf("%.3f ", exact_solution(j, T, k, u1, 1));
+	    }
+	    printf("\n");
+	    
+
+        /*printf("%.5f ", u0);
         for (double x = 0.1; x < 0.9; x+=0.1) {
         	printf("%.5f ", exact_solution(x, T, k, u1, 1));
         }
         printf("%.5f \n", u0);
-
+		*/
     }
 
     MPI_Finalize();   
