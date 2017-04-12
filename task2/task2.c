@@ -29,7 +29,10 @@ int main(int argc, char** argv) {
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-    double T = 0.00000001, h = 2e-6, k = 1, dt = 2e-12, u0 = 0, u1 = 1;
+    int points_num = atoi(argv[1]);
+    double h = ((double)1)/(double)points_num;
+
+    double T = 0.00000001, k = 1, dt = 2e-12, u0 = 0, u1 = 1;
 
     if (dt >= h*h/k) {
     	printf("Courant cond. fail:dt = %f, h*h/k = %f\n.", dt, h*h/k);
@@ -37,8 +40,6 @@ int main(int argc, char** argv) {
     	return 0;
     }
 
-
-    int points_num = (int)(1/h) + 1;
     div_t p = div(points_num,size-1);
     int points_per_proc = p.quot;
     int steps = (int)(T/dt);
