@@ -1,0 +1,12 @@
+#!/bin/bash
+#PBS -l walltime=00:01:00,nodes=3:ppn=4
+#PBS -N my_job
+#PBS -q batch
+cd $PBS_O_WORKDIR
+for i in 2 3 4 5 6 7 8 9 10 11 12 13
+do
+    for j in 2000 10000 50000
+    do 
+	mpirun --hostfile $PBS_NODEFILE -np $i ./task2 $j 500
+    done
+done

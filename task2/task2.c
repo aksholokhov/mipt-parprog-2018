@@ -23,13 +23,28 @@ double exact_solution(double x, double t, double k, double u0, double l) {
 int main(int argc, char** argv) {
     MPI_Init(&argc, &argv);
 
+
+
     int size, rank;
 
+    int LOGGING = 1;
+    int WRITE_ACCELERATION_TO_FILE = 0;
+    
+    /*
+    int u0 = 0, u1 = 1, k = 1;
+    int points_num = atoi(argv[1]);
+    int NUM_CYCLES = atoi(argv[2]);
+    double h = ((float)1)/((float)points_num);
+    double dt = h*h/2;
+    double T = NUM_CYCLES*dt;
+    points_num+=1;
+    */
 
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-    double T = 0.00000001, h = 2e-6, k = 1, dt = 2e-12, u0 = 0, u1 = 1;
+    double T = 0.1, k = 1, h=2e-2, dt = 2e-4, u0 = 0, u1 = 1;
+    int points_num = (int)1/h+1;
 
     if (dt >= h*h/k) {
     	printf("Courant cond. fail:dt = %f, h*h/k = %f\n.", dt, h*h/k);
@@ -38,7 +53,6 @@ int main(int argc, char** argv) {
     }
 
 
-    int points_num = (int)(1/h) + 1;
     div_t p = div(points_num,size-1);
     int points_per_proc = p.quot;
     int steps = (int)(T/dt);
@@ -121,14 +135,18 @@ int main(int argc, char** argv) {
 
         end = MPI_Wtime();
 
+        double MP_TIME = end-begin;
+
         points[points_num+1] = u0;
-        printf("Multi-process time is: %f, with result below \n", end-begin);
-        for (double j = 0; j<=1; j+=0.1) {
-	        int point = (int)((points_num+1)*j);
-	        if (j > 0.5) point++;
-	            printf("%.3f ", points[point]);
-	    }
-	    printf("\n \n");
+        if (LOGGING) {
+	        printf("Multi-process time is: %f, with result below \n", end-begin);
+	        for (double j = 0; j<=1; j+=0.1) {
+		        int point = (int)((points_num+1)*j);
+		        if (j > 0.5) point++;
+		            printf("%.3f ", points[point]);
+		    }
+		    printf("\n \n");
+		}
 
         begin = MPI_Wtime();
 
@@ -147,23 +165,40 @@ int main(int argc, char** argv) {
         }
         
         end = MPI_Wtime();
-        printf("Single-process time is: %f, with result below \n", end-begin);
 
-        for (double j = 0; j<=1; j+=0.1) {
-            int point = (int)((points_num+1)*j);
-            if (j > 0.5) point++;
-            printf("%.3f ", points[point]);
+        double SP_TIME = end-begin;
+
+        if (WRITE_ACCELERATION_TO_FILE) {
+        	FILE *f = fopen("acceleration.csv", "a");
+			if (f == NULL)
+			{
+			    printf("Error opening file!\n");
+			    exit(1);
+			}
+			fprintf(f, "%d,%d,%.7f,%.2f \n", size-1, points_num-1, T, SP_TIME/MP_TIME);
+			fclose(f);
         }
-        printf("\n \n");
-	
-        printf("Exact solution is: \n");
-        for (double j = 0; j<=1; j+=0.1) {
-	        int point = (int)((points_num+1)*j);
-	        if (j > 0.5) point++;
-	            printf("%.3f ", exact_solution(j, T, k, u1, 1));
-	    }
-	    printf("\n");
+        //printf("%d,%d,%.7f, %.2f \n", size-1, points_num-1, T, SP_TIME/MP_TIME);
 
+        if (LOGGING) {
+	        printf("Single-process time is: %f, with result below \n", end-begin);
+
+	        for (double j = 0; j<=1; j+=0.1) {
+	            int point = (int)((points_num+1)*j);
+	            if (j > 0.5) point++;
+	            printf("%.3f ", points[point]);
+	        }
+	        printf("\n \n");
+		
+	        printf("Exact solution is: \n");
+
+	        for (double j = 0; j<=1; j+=0.1) {
+		        int point = (int)((points_num+1)*j);
+		        if (j > 0.5) point++;
+		            printf("%.3f ", exact_solution(j, T, k, u1, 1));
+		    }
+		    printf("\n");
+		}
     }
 
     MPI_Finalize();   
