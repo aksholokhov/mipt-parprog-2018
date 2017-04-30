@@ -12,7 +12,7 @@ double exact_solution(double x, double t, double k, double u0, double l) {
 	double sum = 0;
 
 	double PI = 3.141592653589793;
-	for (int y = 0; y < 100500; y++) {
+	for (int y = 0; y <= 1; y++) {
 		double m = (double)y;
 		sum += exp(-k*PI*PI*(2*m+1)*(2*m+1)*t/(l*l))*sin(PI*(2*m+1)*x/l)/(2*m+1);
 	}
@@ -43,8 +43,9 @@ int main(int argc, char** argv) {
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-    double T = 0.1, k = 1, h=2e-2, dt = 2e-4, u0 = 0, u1 = 1;
-    int points_num = (int)1/h+1;
+    double T = 0.1, k = 1, h=0.1, dt = 1e-3, u0 = 0, u1 = 1;
+    
+    int points_num = (int)1/h;
 
     if (dt >= h*h/k) {
     	printf("Courant cond. fail:dt = %f, h*h/k = %f\n.", dt, h*h/k);
@@ -150,18 +151,28 @@ int main(int argc, char** argv) {
 
         begin = MPI_Wtime();
 
+        points[0] = 0;
+        points[points_num + 1] = 0;
+        k = 1;
+        dt = 1e-3;
+        T = 0.1;
+        h = 0.1;
+
         for (int i = 1; i < points_num+1; i++) {
             points[i] = u1;
             buf[i] = u1;
         }
-        
-        for (int i = 0; i < steps; i++) {
+        int i = 0;
+        double ddt = 0;
+        while (ddt <= T ) {
             for (int j = 1; j < points_num+1; j++) {
-                buf[j] = recalculate(&points[j-1], k, dt, h);
+                //buf[j] = recalculate(&points[j-1], k, dt, h);
+                buf[j] = points[j] + (k*dt/(h*h))*(points[j+1] - 2*points[j] + points[j-1]);
             }
             for (int j = 1; j < points_num+1; j++) {
                 points[j] = buf[j];
             }
+            ddt += dt;
         }
         
         end = MPI_Wtime();
@@ -178,7 +189,6 @@ int main(int argc, char** argv) {
 			fprintf(f, "%d,%d,%.7f,%.2f \n", size-1, points_num-1, T, SP_TIME/MP_TIME);
 			fclose(f);
         }
-        //printf("%d,%d,%.7f, %.2f \n", size-1, points_num-1, T, SP_TIME/MP_TIME);
 
         if (LOGGING) {
 	        printf("Single-process time is: %f, with result below \n", end-begin);
