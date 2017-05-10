@@ -11,15 +11,17 @@ const double x_max = PI, y_max = 1, z_max = PI;
 
 
 void* worker_routine(void* params) {
-	int iter_num = ((int*)params)[0];
-	int rank = ((int*)params)[1];
-	int* counter = (int*)malloc(sizeof(int));
+	long iter_num = ((long*)params)[0];
+
+	int rank = (int)((long*)params)[1];
+	long* counter = (long*)malloc(sizeof(long));
+	*counter = 0;
 	double x, y, z, rnd_max = (double)RAND_MAX;
-	unsigned int seed = time(NULL)*rank;
+	unsigned int x_seed = 31*rank;
 	for (int i = 0; i < iter_num; i++) {
-		x = ((double)rand_r(&seed))/rnd_max*x_max;
-		y = ((double)rand_r(&seed))/rnd_max*y_max;
-		z = ((double)rand_r(&seed))/rnd_max*z_max;
+		x = ((double)rand_r(&x_seed))/rnd_max*x_max;
+		y = ((double)rand_r(&x_seed))/rnd_max*y_max;
+		z = ((double)rand_r(&x_seed))/rnd_max*z_max;
 		if ((x > 0 ) & (x < PI)) {
 			if (y < sin(x)) {
 				if (z < x*y) {
@@ -28,52 +30,64 @@ void* worker_routine(void* params) {
 			}
 		}
 	}
-	return (void*)counter;
+
+	pthread_exit((void*)counter);
 }
 
 int main(int argc, char const *argv[])
 {
-	int NUM_THREADS = atoi(argv[1]);
-	int NUM_POINTS = atoi(argv[2]);
-	div_t ppt = div(NUM_POINTS, NUM_THREADS);
+	long NUM_THREADS = atol(argv[1]);
+	long NUM_POINTS = atol(argv[2]);
+	ldiv_t ppt = ldiv(NUM_POINTS, NUM_THREADS);
 
-	void* result;
-	int* args[NUM_THREADS+1];
+	void* result = malloc(sizeof(long));
+	long* args[NUM_THREADS+1];
 	
-	pthread_t thread[NUM_THREADS];
+	pthread_t thread[NUM_THREADS+1];
 
-	struct timeval stop, start;
-	gettimeofday(&start, NULL);
+	//clock_t begin = clock();
+	struct timespec begin, end;
+
+	clock_gettime(CLOCK_REALTIME, &begin);
 
 	for (int i = 1; i <= NUM_THREADS; i++) {
-		args[i] = (int*)malloc(sizeof(int)*2);
-		args[i][0] = i == NUM_THREADS - 1 ? ppt.quot + ppt.rem : ppt.quot;
-		args[i][1] = i+1;
+		args[i] = (long*)malloc(sizeof(long)*2);
+		args[i][0] = i == NUM_THREADS ? ppt.quot + ppt.rem : ppt.quot;
+		args[i][1] = i;
 		pthread_create(&thread[i], NULL, worker_routine, (void*)(args[i]));
 	}
 
-	double sum = 0;
+	long sum = 0;
+
 	for (int i = 1; i <= NUM_THREADS; i++) {
 		pthread_join(thread[i], &result);
-		free(args[i]);
-		sum += *(int*)result;
+		sum += *(long*)result;
 	}
-	gettimeofday(&stop, NULL);
-	double MP_perf = abs(stop.tv_usec - start.tv_usec);
 
-	printf("MP result is: %.5f\n", sum/(double)NUM_POINTS*(x_max*y_max*z_max));
+	clock_gettime(CLOCK_REALTIME, &end);
 
-	gettimeofday(&start, NULL);
-	args[0] = (int*)malloc(sizeof(int)*2);
+	double MP_perf = end.tv_sec - begin.tv_sec;
+	MP_perf += (end.tv_nsec - begin.tv_nsec) / 1000000000.0;
+
+	//printf("MP result is: %.5f\n", ((double)sum)/(double)NUM_POINTS*(x_max*y_max*z_max));
+
+	clock_gettime(CLOCK_REALTIME, &begin);
+
+	args[0] = (long*)malloc(sizeof(long)*2);
 	args[0][0] = NUM_POINTS;
-	args[0][1] = 99;
-	result = worker_routine(args[0]);
-	gettimeofday(&stop, NULL);
+	args[0][1] = 999;
+	pthread_create(&thread[0], NULL, worker_routine, (void*)(args[0]));
+	pthread_join(thread[0], &result);
 
-	double SP_perf = abs(stop.tv_usec - start.tv_usec);
+	clock_gettime(CLOCK_REALTIME, &end);
 
-	printf("SP result is: %.5f\n", (double)(((int*)result)[0])/(double)NUM_POINTS*(x_max*y_max*z_max));	
+	double SP_perf = end.tv_sec - begin.tv_sec;
+	SP_perf += (end.tv_nsec - begin.tv_nsec) / 1000000000.0;
 
-	printf("Acceleration is: %.4f\n", SP_perf/MP_perf);
+	//printf("SP result is: %.5f\n",	(double)(((long*)result)[0])/(double)NUM_POINTS*(x_max*y_max*z_max));	
+
+	//printf("Acceleration is: %.4f\n", (double)(SP_perf/MP_perf));
+	
+	printf("%ld,%ld,%.3f\n", NUM_THREADS, NUM_POINTS, SP_perf/MP_perf);
 	return 0;
 }
