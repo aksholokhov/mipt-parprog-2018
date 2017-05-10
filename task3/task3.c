@@ -2,17 +2,20 @@
 #include "stdlib.h"
 #include "pthread.h"
 #include "stdio.h"
+#include "semaphore.h"
 #include "math.h"
 #include <sys/time.h>
 
 
 const double PI = 3.141592653589793;
-const double x_max = PI, y_max = 1, z_max = PI;
+const double x_max = PI, y_max = 1, z_max = PI*0.57;
 
+static long sum;
+
+sem_t sem;
 
 void* worker_routine(void* params) {
 	long iter_num = ((long*)params)[0];
-
 	int rank = (int)((long*)params)[1];
 	long* counter = (long*)malloc(sizeof(long));
 	*counter = 0;
@@ -31,6 +34,12 @@ void* worker_routine(void* params) {
 		}
 	}
 
+	sem_wait(&sem);
+	//critical section
+	sum += *counter;
+	sem_post(&sem);
+	//leave critical section
+
 	pthread_exit((void*)counter);
 }
 
@@ -48,6 +57,8 @@ int main(int argc, char const *argv[])
 	//clock_t begin = clock();
 	struct timespec begin, end;
 
+	sem_init(&sem, 0, 1);
+
 	clock_gettime(CLOCK_REALTIME, &begin);
 
 	for (int i = 1; i <= NUM_THREADS; i++) {
@@ -57,11 +68,11 @@ int main(int argc, char const *argv[])
 		pthread_create(&thread[i], NULL, worker_routine, (void*)(args[i]));
 	}
 
-	long sum = 0;
+	long local_sum = 0;
 
 	for (int i = 1; i <= NUM_THREADS; i++) {
 		pthread_join(thread[i], &result);
-		sum += *(long*)result;
+		local_sum += *(long*)result;
 	}
 
 	clock_gettime(CLOCK_REALTIME, &end);
@@ -69,10 +80,12 @@ int main(int argc, char const *argv[])
 	double MP_perf = end.tv_sec - begin.tv_sec;
 	MP_perf += (end.tv_nsec - begin.tv_nsec) / 1000000000.0;
 
-	//printf("MP result is: %.5f\n", ((double)sum)/(double)NUM_POINTS*(x_max*y_max*z_max));
+	//printf("MP result (with returns) is: %.5f\n", ((double)local_sum)/(double)NUM_POINTS*(x_max*y_max*z_max));
+	//printf("MP result (with semaphores) is: %.5f\n", ((double)sum)/(double)NUM_POINTS*(x_max*y_max*z_max));
 
 	clock_gettime(CLOCK_REALTIME, &begin);
 
+	sum = 0;
 	args[0] = (long*)malloc(sizeof(long)*2);
 	args[0][0] = NUM_POINTS;
 	args[0][1] = 999;
